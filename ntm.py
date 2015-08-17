@@ -21,7 +21,7 @@ y_size = 8
 lr = 0.001
 insize, hsize, outsize = y_size+M, 200,  2*y_size+3*M+3+shiftwidth
 
-mem0 = theano.shared(2 * (np.random.rand(N,M) - 0.5).astype(theano.config.floatX))
+mem0 = theano.shared(np.random.rand(N,M).astype(theano.config.floatX))
 w_init = theano.shared(np.random.rand(N,).astype(theano.config.floatX))
 w0 =  vector_softmax(w_init)
 #controller params
@@ -31,7 +31,7 @@ w_ho = theano.shared(np.random.uniform(-1,1, (hsize, outsize)).astype(theano.con
 bo = theano.shared(np.zeros((outsize,), dtype = theano.config.floatX))
 
 #k = theano.shared(np.random.uniform(0,1, (M,)).astype(theano.config.floatX))
-params = [mem0, w_init,w_xh,bh,w_ho,bo]
+params = [mem0, w_init, w_xh, bh, w_ho, bo]
 x = T.matrix('x')
 y = T.imatrix('y')
 
@@ -40,7 +40,7 @@ def read(mem, w):
 	return T.dot(w, mem)
 
 
-def write(mem, w,e,a):
+def write(mem, w, e, a):
 	w = w.dimshuffle(0, 'x')
 	e = e.dimshuffle('x',0)
 	a = a.dimshuffle('x',0)
@@ -59,7 +59,7 @@ def get_head_params(h):
 	shift_raw = raw_outputs[2*y_size+3+M*3:2*y_size+3+M*3+shiftwidth]
 	output = T.nnet.softmax(output_raw.reshape((y_size,2)))
 	
-	shift = T.nnet.softmax(shift_raw.reshape((1,shift_raw.shape[0])))[0] 
+	shift = T.nnet.softmax(shift_raw.dimshuffle(0, 'x'))[0]#reshape((1,shift_raw.shape[0])))[0] 
 	erase = T.nnet.sigmoid(erase_raw)
 	beta = T.nnet.softplus(beta_raw)#T.dot(x, w_beta) + b_beta)
 	gate = T.nnet.sigmoid(gate_raw)#T.dot(x, w_gate) + b_gate)
@@ -69,7 +69,7 @@ def get_head_params(h):
 
 def controller(x, r):
 	inlayer = T.concatenate([x, r])
-	hlayer = T.tanh(T.dot(inlayer, w_xh)+bh)
+	hlayer = T.nnet.sigmoid(T.dot(inlayer, w_xh)+bh)
 	return get_head_params(hlayer)
 
 
@@ -106,7 +106,8 @@ def RMSprop(cost, params, lr=0.01, rho=0.9, epsilon=1e-6):
 		updates.append((p, p - lr * g))
 	return updates
 
-[w, mem, y_, beta, s, gamma, g, a_t],_ = theano.scan(fn = step, sequences = [x],  outputs_info= [w0, mem0, None, None, None, None, None, None])
+[w, mem, y_, beta, s, gamma, g, a_t],_ = theano.scan(fn = step, sequences = [x],  \
+	outputs_info= [w0, mem0, None, None, None, None, None, None])
 #prob_y_given_x =prob_y_given_x[:,0,:]
 ypred = T.argmax(y_, axis= 2)
 y_ = y_.reshape((x.shape[0]*y_size, 2))
@@ -119,4 +120,5 @@ cost = T.mean(-T.sum(T.log(y_), axis = 1))
 #grad = T.grad(cost = cost, wrt = params)
 #updates = [(p, p-lr*gp) for p, gp in zip(params, grad)]
 train = theano.function(inputs = [x,y], outputs = [cost, y_], updates = RMSprop(cost = cost, params = params))
+
 test = theano.function(inputs = [x], outputs = ypred)
